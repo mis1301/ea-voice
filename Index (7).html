@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#4B2E83">
+<title>Assign task by voice</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --plum:#4B2E83; --plum-soft:#EDE7F6; --done:#1E8E3E; --ink:#1F1A2E;
+    --muted:#6B6480; --line:#D9D3E6; --bg:#FAF9FC; --card:#FFFFFF; --rec:#C62828;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --plum:#B39DDB; --plum-soft:#2A2340; --done:#5BD07A; --ink:#EEEAF6;
+      --muted:#A39CB8; --line:#3A3352; --bg:#15121F; --card:#1E1A2B; --rec:#EF5350;
+      color-scheme: dark; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:Manrope, "Segoe UI", Roboto, Arial, sans-serif;}
+  main{max-width:520px;margin:0 auto;padding:24px 18px 40px}
+  h1{font-size:1.5rem;font-weight:800;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 24px;font-size:.95rem}
+  [hidden]{display:none !important}
+
+  .micwrap{display:flex;flex-direction:column;align-items:center;margin:8px 0 22px}
+  #mic{width:132px;height:132px;border-radius:50%;border:0;cursor:pointer;
+    background:var(--plum);color:#fff;display:grid;place-items:center;
+    box-shadow:0 0 0 10px var(--plum-soft);transition:background .2s, box-shadow .2s}
+  #mic svg{width:52px;height:52px}
+  #mic.rec{background:var(--rec);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(198,40,40,.45)}100%{box-shadow:0 0 0 26px rgba(198,40,40,0)}}
+  @media (prefers-reduced-motion: reduce){#mic.rec{animation:none}}
+  #micState{margin-top:14px;font-weight:700;color:var(--muted);min-height:1.3em;text-align:center}
+
+  label{display:block;font-weight:700;font-size:.9rem;margin:16px 0 6px}
+  select,input,textarea{width:100%;font:inherit;font-size:1rem;color:var(--ink);
+    background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:12px}
+  textarea{min-height:120px;resize:vertical;line-height:1.45}
+  select:focus,input:focus,textarea:focus,button:focus-visible{outline:3px solid var(--plum);outline-offset:1px}
+  .row{display:flex;gap:10px}
+  .row>div{flex:1}
+  .hint{font-size:.82rem;color:var(--muted);margin-top:6px}
+  .lang{display:flex;gap:6px;justify-content:center;margin-top:12px}
+  .lang button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:6px 14px;font:inherit;font-size:.85rem;cursor:pointer}
+  .lang button[aria-pressed="true"]{border-color:var(--plum);background:var(--plum-soft);font-weight:700}
+
+  .primary{margin-top:24px;width:100%;padding:16px;border:0;border-radius:12px;
+    background:var(--done);color:#fff;font:inherit;font-weight:800;font-size:1.05rem;cursor:pointer}
+  .primary:disabled{opacity:.55;cursor:wait}
+  .ghost{margin-top:10px;width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;
+    background:transparent;color:var(--muted);font:inherit;font-weight:700;cursor:pointer}
+  .msg{margin-top:16px;padding:12px 14px;border-radius:10px;display:none;line-height:1.4}
+  .msg.ok{display:block;background:rgba(30,142,62,.12);color:var(--done)}
+  .msg.err{display:block;background:rgba(198,40,40,.12);color:var(--rec)}
+  .foot{margin-top:28px;text-align:center}
+  .foot button{background:none;border:0;color:var(--muted);font:inherit;font-size:.82rem;text-decoration:underline;cursor:pointer}
+</style>
+</head>
+<body>
+<main>
+
+  <!-- First-time access code screen -->
+  <section id="gate" hidden>
+    <h1>Assign a task to EA</h1>
+    <p class="sub">Enter your email and the access code once. This phone will remember them.</p>
+    <label for="email">Your email</label>
+    <input id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="name@jagtapbuildingsolutions.org">
+    <label for="code">Access code</label>
+    <input id="code" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="primary" id="saveCode">Continue</button>
+    <div class="msg" id="gateMsg" role="status"></div>
+  </section>
+
+  <!-- Main voice screen -->
+  <section id="app" hidden>
+    <h1>Assign a task to EA</h1>
+    <p class="sub">Tap the mic and speak the task. Say a day like “tomorrow” or “Monday” to set the due date.</p>
+
+    <div class="micwrap">
+      <button id="mic" aria-label="Start speaking">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2z"/></svg>
+      </button>
+      <div id="micState">Tap to speak</div>
+      <div class="lang" role="group" aria-label="Speaking language">
+        <button data-lang="en-IN" aria-pressed="true">English</button>
+        <button data-lang="hi-IN" aria-pressed="false">हिंदी</button>
+        <button data-lang="mr-IN" aria-pressed="false">मराठी</button>
+      </div>
+    </div>
+
+    <label for="task">Task</label>
+    <textarea id="task" placeholder="Your words will appear here. You can also type."></textarea>
+
+    <div class="row">
+      <div>
+        <label for="doer">Doer</label>
+        <select id="doer"><option>Loading…</option></select>
+      </div>
+      <div>
+        <label for="due">Due date</label>
+        <input type="date" id="due">
+      </div>
+    </div>
+    <div class="hint" id="dueHint"></div>
+
+    <button class="primary" id="send">Send task</button>
+    <button class="ghost" id="clear">Clear</button>
+    <div class="msg" id="msg" role="status"></div>
+
+    <div class="foot"><span class="hint" id="who"></span><br><button id="forget">Change email or access code</button></div>
+  </section>
+</main>
+
+<script>
+/* ====== PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends with /exec) ====== */
+const EXEC_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+/* ======================================================================= */
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
+  clear(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+let KEY = '', EMAIL = '';
+let lang = 'en-IN', rec = null, listening = false, baseText = '', dueTouched = false;
+
+/* ---------- server calls ----------
+   Inside Apps Script -> google.script.run ; on GitHub Pages -> fetch(EXEC_URL) */
+const IN_APPS_SCRIPT = !!(window.google && google.script && google.script.run);
+function gsr(fn, arg){
+  return new Promise((ok, fail) => {
+    const r = google.script.run.withSuccessHandler(ok).withFailureHandler(e => fail(new Error(e.message || e)));
+    arg === undefined ? r[fn]() : r[fn](arg);
+  });
+}
+async function api(method, payload){
+  if (IN_APPS_SCRIPT) {
+    if (method === 'setup') return gsr('getSetup');
+    return gsr('submitTask', Object.assign({ key: KEY, email: EMAIL }, payload));
+  }
+  if (EXEC_URL.indexOf('/exec') < 0) throw new Error('Web app URL is not set in index.html.');
+  let res;
+  if (method === 'setup') {
+    res = await fetch(EXEC_URL + '?action=setup&key=' + encodeURIComponent(KEY));
+  } else {
+    res = await fetch(EXEC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // avoids CORS preflight
+      body: JSON.stringify(Object.assign({ key: KEY, email: EMAIL }, payload))
+    });
+  }
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Something went wrong.');
+  return data;
+}
+
+/* ---------- access code ---------- */
+function showGate(errText){
+  $('app').hidden = true; $('gate').hidden = false;
+  const m = $('gateMsg'); m.className = errText ? 'msg err' : 'msg'; m.textContent = errText || '';
+  $('email').value = EMAIL; $('code').value = KEY;
+  (EMAIL ? $('code') : $('email')).focus();
+}
+async function openApp(){
+  try {
+    const s = await api('setup');
+    $('doer').innerHTML = s.doers.map(n => `<option ${n === s.defaultDoer ? 'selected' : ''}>${n}</option>`).join('');
+    $('who').textContent = 'Sending as ' + EMAIL;
+    $('gate').hidden = true; $('app').hidden = false;
+  } catch (e) {
+    if (/access code/i.test(e.message)) { store.clear('eaVoiceKey'); KEY=''; showGate('That access code is not correct.'); }
+    else showGate('Could not connect: ' + e.message);
+  }
+}
+$('saveCode').onclick = () => {
+  const em = $('email').value.trim(), v = $('code').value.trim();
+  EMAIL = em; KEY = v;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return showGate('Enter a valid email.');
+  if (!v) return showGate('Enter the access code.');
+  store.set('eaVoiceEmail', em); store.set('eaVoiceKey', v); openApp();
+};
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('saveCode').click(); });
+$('forget').onclick = () => { showGate(); };
+
+// optional: link like  ...github.io/ea-voice/?code=XXXX  saves the code once
+(function init(){
+  const u = new URL(location.href), c = u.searchParams.get('code');
+  if (c) { store.set('eaVoiceKey', c); u.searchParams.delete('code'); history.replaceState(null, '', u.pathname); }
+  KEY = store.get('eaVoiceKey'); EMAIL = store.get('eaVoiceEmail');
+  (KEY && EMAIL) ? openApp() : showGate();
+})();
+
+/* ---------- dates ---------- */
+function iso(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+function today(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+$('due').value = iso(today());
+$('due').addEventListener('input', ()=>{ dueTouched = true; $('dueHint').textContent=''; });
+
+const DAYS = {sunday:0,monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,
+  'रविवार':0,'सोमवार':1,'मंगलवार':2,'मंगळवार':2,'बुधवार':3,'गुरुवार':4,'शुक्रवार':5,'शनिवार':6};
+const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+function detectDue(text){
+  const t = text.toLowerCase(), d = today();
+  const add = n => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+  let m;
+  if (/day after tomorrow|परसों|परवा/.test(t)) return [add(2),'day after tomorrow'];
+  if (/tomorrow|कल|उद्या/.test(t))            return [add(1),'tomorrow'];
+  if (/\btoday\b|आज/.test(t))                 return [d,'today'];
+  if ((m = t.match(/(?:in|after)\s+(\d+)\s+days?/))) return [add(+m[1]), m[0]];
+  if ((m = t.match(/(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/))) {
+    const y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : d.getFullYear();
+    return [new Date(y, +m[2]-1, +m[1]), m[0]];
+  }
+  if ((m = t.match(/(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*/)))
+    return [new Date(d.getFullYear(), MONTHS.indexOf(m[2]), +m[1]), m[0]];
+  if ((m = t.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?/)))
+    return [new Date(d.getFullYear(), MONTHS.indexOf(m[1]), +m[2]), m[0]];
+  for (const k in DAYS) {
+    if (t.includes(k)) { let diff = (DAYS[k] - d.getDay() + 7) % 7; if (diff===0) diff = 7; return [add(diff), k]; }
+  }
+  return null;
+}
+function applyDue(){
+  if (dueTouched) return;
+  const r = detectDue($('task').value);
+  if (r) { $('due').value = iso(r[0]); $('dueHint').textContent = 'Due date set from “'+r[1]+'”. Change it if needed.'; }
+}
+$('task').addEventListener('input', applyDue);
+
+function pickDoer(text){
+  const t = text.toLowerCase();
+  [...$('doer').options].forEach(o=>{
+    const first = o.value.toLowerCase().split(' ')[0];
+    if (first.length > 2 && t.includes(first)) o.selected = true;
+  });
+}
+
+/* ---------- language ---------- */
+document.querySelectorAll('.lang button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.lang button').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true'); lang=b.dataset.lang;
+  if (listening) { setMic(false); rec.stop(); }
+});
+
+/* ---------- speech ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function setMic(on, label){
+  listening = on; $('mic').classList.toggle('rec', on);
+  $('mic').setAttribute('aria-label', on ? 'Stop' : 'Start speaking');
+  $('micState').textContent = label || (on ? 'Listening… tap to stop' : 'Tap to speak');
+}
+function startRec(){
+  rec = new SR(); rec.lang = lang; rec.continuous = true; rec.interimResults = true;
+  baseText = $('task').value ? $('task').value.trim() + ' ' : '';
+  rec.onresult = e => {
+    let finalT = '', interim = '';
+    for (let i = 0; i < e.results.length; i++) {
+      (e.results[i].isFinal ? (finalT += e.results[i][0].transcript) : (interim += e.results[i][0].transcript));
+    }
+    $('task').value = (baseText + finalT + interim).replace(/\s+/g,' ');
+    applyDue(); pickDoer($('task').value);
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+      setMic(false, IN_APPS_SCRIPT
+        ? 'Mic is blocked on this page. Tap the Task box and use the mic on your keyboard.'
+        : 'Mic permission is off. Tap the lock icon in the address bar and allow Microphone.');
+    else if (e.error !== 'no-speech' && e.error !== 'aborted') setMic(false, 'Voice error: ' + e.error);
+  };
+  rec.onend = () => { if (listening) setMic(false); };
+  rec.start(); setMic(true);
+}
+$('mic').onclick = () => {
+  if (!SR) { setMic(false, 'Voice is not supported here. Use Chrome, or the mic on your keyboard.'); $('task').focus(); return; }
+  listening ? (setMic(false), rec.stop()) : startRec();
+};
+
+/* ---------- send ---------- */
+function show(text, err){ const m=$('msg'); m.className = err ? 'msg err' : 'msg ok'; m.textContent = text; }
+function resetForm(){ $('task').value=''; $('due').value=iso(today()); dueTouched=false; $('dueHint').textContent=''; }
+$('send').onclick = async () => {
+  const task = $('task').value.trim();
+  if (!task) return show('Say or type the task first.', true);
+  if (listening) { setMic(false); rec.stop(); }
+  $('send').disabled = true; $('send').textContent = 'Sending…';
+  try {
+    const r = await api('submit', { doer: $('doer').value, dueDate: $('due').value, task });
+    show('Sent to ' + r.doer + ', due ' + r.due + ' (from ' + r.email + ').', false);
+    resetForm();
+  } catch (e) {
+    show('Not sent: ' + e.message, true);
+  } finally {
+    $('send').disabled = false; $('send').textContent = 'Send task';
+  }
+};
+$('clear').onclick = () => { resetForm(); $('msg').className='msg'; };
+</script>
+</body>
+</html>
